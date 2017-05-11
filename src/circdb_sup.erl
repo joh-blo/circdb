@@ -34,11 +34,12 @@ start_link(AppList) ->
 %%----------------------------------------------------------------------
 init(_AppList) ->
     %% Create a supervisor for each application in AppList
+    BackupDir="/tmp",
     Specs=[{circdb_manager,
 	    {circdb_manager,start_link,[]},
 	    transient,2000,worker,[circdb]},
 	   {circdb_backup,
-	    {circdb_backup,start_link,[]},
+	    {circdb_backup,start_link,[BackupDir]},
 	    transient,2000,worker,[circdb]}
 	  ],
 

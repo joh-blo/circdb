@@ -11,7 +11,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0,
+-export([start_link/1,
 	 store/2,restore/2,
 
 	 prefetch/1
@@ -46,8 +46,8 @@ restore(Name,Input) ->
 %% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
 %% @end
 %%--------------------------------------------------------------------
-start_link() ->
-  gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+start_link(Dir) ->
+  gen_server:start_link({local, ?SERVER}, ?MODULE, [], [Dir]).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -64,9 +64,8 @@ start_link() ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
-init([]) ->
+init(Dir) ->
   Name=backup,
-  Dir=daisy_lib:get_cfg(daisy_root_dir), % How to make this independet of daisy?
   {ok, #state{db=open_dets(Name,Dir)}}.
 
 %%--------------------------------------------------------------------
