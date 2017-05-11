@@ -1,0 +1,8 @@
+%%% -*- erlang -*-
+{application,circdb,
+ [{description,"A circular DB"},
+  {vsn,"%VSN%"},
+  {modules,[%MODULES%]},
+  {registered,[circdb_app]},
+  {applications,[kernel,stdlib]},
+  {mod,{circdb_app,[]}}]}.
