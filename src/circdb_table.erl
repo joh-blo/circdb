@@ -15,7 +15,7 @@
 	 add_table/3,rm_table/3,
 	 dump/1,
 	 info/1,
-	 update/2,
+	 update/3,
 	 fetch/2,
 
 
@@ -84,8 +84,8 @@ fetch(Pid,FetchArgs) ->
 get_data(StartT,StopT) ->
     gen_server:call(?SERVER,{get_data,StartT,StopT}).
 
-update(Pid,V) ->
-    gen_server:cast(Pid,{update,V}).
+update(Pid,Time,V) ->
+    gen_server:cast(Pid,{update,Time,V}).
 
 
 %%%===================================================================
@@ -104,30 +104,29 @@ update(Pid,V) ->
 %% @end
 %%--------------------------------------------------------------------
 init([Name,Input]) ->
-    %% Note that this is just for a single measurement
-    %% Db=[#db_table{curr_pos=0,
-    %% 		  size=Size,
-    %% 		  delta=Delta,
-    %% 		  db=list_to_tuple(lists:duplicate(Size,undefined))
-    %% 		 }],
-
-    %% We may want to restore data from some backup here...
-    %% RestoreFun=fun() ->
-    %% 		   restore_fun()
-    %% 	       end,
+    %% Possibly restore data from some backup.
     Db=circdb_backup:restore(Name,Input),
-    BT=circdb_lib:get_cfg(circdb_backup_interval),
+    BI=circdb_lib:get_cfg(circdb_backup_interval),
     case circdb_lib:get_cfg(circdb_backup_start,undefined) of
 	undefined ->
-	    erlang:send_after(BT,self(),{?OTP_INTERNAL_GENCAST,backup});
+	    erlang:send_after(BI,self(),{?OTP_INTERNAL_GENCAST,backup});
 	Time ->
 	    %% Calculate time to next backup request
-	    FirstBT=BT,
-	    erlang:send_after(FirstBT,self(),{?OTP_INTERNAL_GENCAST,backup})
+	    {CurrentDay,NextDay}=case calendar:local_time() of
+				     {CD,CT} when CT<Time ->
+					 {CD,0};
+				     {CD,_} ->
+					 {CD,1000*24*3600} % Next day
+				 end,
+	    BTime={CurrentDay,Time},
+	    First=calendar:datetime_to_gregorian_seconds(BTime)*1000 -
+		circdb_lib:current_time() +
+		NextDay,
+	    erlang:send_after(First,self(),{?OTP_INTERNAL_GENCAST,backup})
     end,
     {ok, #state{name=Name,
 		db=Db,
-		backup_interval=BT
+		backup_interval=BI
 	       }}.
 
 %%--------------------------------------------------------------------
@@ -188,8 +187,8 @@ handle_cast(backup,State=#state{name=Name,db=Db,backup_interval=BT}) ->
   circdb_backup:store(Name,Db),
   erlang:send_after(BT,self(),{?OTP_INTERNAL_GENCAST,backup}),
   {noreply, State};
-handle_cast({update,Y},State=#state{db=Db,cons_type=CT}) ->
-    NewDb=update_db(Db,Y,CT,[]),
+handle_cast({update,Time,Y},State=#state{db=Db,cons_type=CT}) ->
+    NewDb=update_db(Db,Time,Y,CT,[]),
     {noreply, State#state{db=NewDb}};
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -624,14 +623,14 @@ pp_dbt(#db_table{first_time=FT,
 %% If we reach a trigger position, this update trigger one or more additional 
 %% updates in the table following.
 %% Note:
-%% - We trust the data provider to provide new values at the right time
-update_db([],_Y,_CT,Out)  ->
+%% - We cannot trust the data provider to provide new values at the right time!
+update_db([],_Time,_Y,_CT,Out)  ->
     lists:reverse(Out);
 update_db([H=#db_table{curr_pos=CurrPos,
 		       trigger_fun=TriggFun,
 		       size=Size,
 		       db=Db} | Rest],
-	  Y,CT,Out)  ->
+	  Time,Y,CT,Out)  ->
     NewPos=(((CurrPos-1+1) rem Size)+1),
     NewH=if
 	     NewPos==1 ->
@@ -651,7 +650,7 @@ update_db([H=#db_table{curr_pos=CurrPos,
 %    io:format("Step=~p CurrPos=~p TriggerNext=~p~n",[Step,CurrPos,TriggerNext]),
     if
 	TriggerNext ->
-	    update_db(Rest,Y,CT,[NewH|Out]);
+	    update_db(Rest,Time,Y,CT,[NewH|Out]);
 	true ->
 	    lists:reverse([NewH|Out])++Rest
     end.

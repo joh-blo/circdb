@@ -89,9 +89,7 @@ handle_call({store,Name,Data}, _From, State=#state{db=Db}) ->
 
   {reply, Reply, State};
 handle_call({restore,Name,Input}, _From, State=#state{db=Db}) ->
-  
-%  io:format("Restore backup DS ~p!~n",[Name]),
-  Reply=case catch dets:lookup(Db,Name) of
+    Reply=case catch dets:lookup(Db,Name) of
 	  [] ->
 	    %% This is not yet stored, use input fuction to possibly prefetch
 	    %% data
@@ -110,6 +108,7 @@ handle_call({restore,Name,Input}, _From, State=#state{db=Db}) ->
   {reply, Reply, State}.
 
 
+%% Note: Is this this really the right place for this ??
 prefetch({{node,Node},{M,F,A}}) ->
   case catch rpc:call(Node,M,F,A++[prefetch]) of
     {List,Size,Delta,FT,CurrPos} when is_list(List) ->
@@ -122,7 +121,9 @@ prefetch({{node,Node},{M,F,A}}) ->
 		}];
     _ ->
       undefined
-  end.
+  end;
+prefetch(_) ->
+    undefined.
 
 
 

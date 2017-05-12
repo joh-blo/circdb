@@ -10,7 +10,10 @@
 
 
 -export([new/2,
-	 create/3,delete/3, update/2, updatev/1, dump/1, restore/1, last/1,
+	 create/3,
+	 delete/3,
+	 update/2,update/3,
+	 updatev/1, dump/1, restore/1, last/1,
          first/1,
 	 info/0, info/1,
 	 fetch/2, tune/1, resize/1, xport/1,
@@ -60,14 +63,18 @@ delete(Name,Step,Repeats) ->
     gen_server:call(?MODULE,{delete,Name,Step,Repeats}).
 
 
-%% @spec update(erlang:iodata()) -> { ok, Response }  |  
-%%   { error, Reason } 
+-spec update(Name::string(),V::erlang:iodata()) ->
+		    {ok, Response::atom()}  |  {error, Reason::atom()}.
 %%  Reason = iolist()
 %%  Response = iolist()
 %% @doc Store new data values into an RRD. Check 
 %% [http://oss.oetiker.ch/rrdtool/doc/rrdupdate.en.html rrdupdate].
 update(Name,V) ->
-    gen_server:cast(?MODULE,{update,Name,V}).
+    Time=circdb_lib:current_time(),
+    gen_server:cast(?MODULE,{update,Name,Time,V}).
+
+update(Name,Time,V) ->
+    gen_server:cast(?MODULE,{update,Name,Time,V}).
 
 
 %% @spec updatev(erlang:iodata()) -> { ok, Response }  |  
@@ -240,8 +247,8 @@ handle_call({info,Arg}, _From,State=#state{tabledb=TDB}) ->
 
 %% handle_cast
 %% @hidden
-handle_cast({update,Name,V}, State=#state{tabledb=TDB}) ->
-    update_table(Name,V,TDB),
+handle_cast({update,Name,Time,V}, State=#state{tabledb=TDB}) ->
+    update_table(Name,Time,V,TDB),
     {noreply, State};    
 handle_cast(Msg, State) -> 
     io:format("Got unexpected cast msg: ~p~n", [Msg]),
@@ -298,13 +305,13 @@ delete_table(Name,Step,Repeats,TDB) ->
 	    end
     end.
 
-update_table(Name,V,TDB) ->
+update_table(Name,Time,V,TDB) ->
     case proplists:get_value(Name,TDB) of
 	undefined ->
 	io:format("ERROR Unknown table ~p~n",[Name]),
 	    {error,unknown_table};
 	Pid ->
-	    circdb_table:update(Pid,V)
+	    circdb_table:update(Pid,Time,V)
     end.
     
 
@@ -353,4 +360,7 @@ info_table_all([{Name,Pid}|Rest],Out) ->
 %%% ----------------------------------------------------------------------------
 %% DB primitives
 init_tdb() ->
-    [].
+    TS=circcdb_lib:get_cfg(circdb_timeseries,[]),
+    Db=ets:new(tsdb,[]),
+    ets:insert(Db,TS),
+    Db.

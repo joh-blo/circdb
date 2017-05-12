@@ -6,6 +6,7 @@ include ../vsn.mk
 APP_NAME = circdb
 
 MODULES = \
+	circdb \
 	circdb_app \
 	circdb_sup \
 	circdb_backup \

@@ -1,5 +1,15 @@
 -define(APP_NAME,circdb).
 
+-record(cdb_ts,{
+	  id,            % integer() :: Key
+          interval,      % integer() :: Milli seconds between 2 buckets
+          buckets,       % integer() :: Number of time slots
+          consolidation, % [atom()]  :: [average,min,max,last]
+          description,   % string()  :: Friendly description
+
+          time_series=[1,2,3,4] % [integer()] :: References to time series db
+         }).
+
 
 -record(db_table,{
 	  size,       % (int) Size of database
