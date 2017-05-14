@@ -267,6 +267,36 @@ code_change(_OldVsn, State, _Extra) ->
 
 
 %%% ----------------------------------------------------------------------------
+
+init_tables([],DsId,Out) ->
+    lists:reverse(Out);
+init_tables([H=#cdb_ts{id=TsId,interval=Interval,buckets=Buckets}|Rest],
+	     DsId,Out) ->
+    io:format("init_tables ~p Interval=~p Buckets=~p~n",
+	      [{DsId,TsId},Interval,Buckets]),
+
+    case circdb_table:start_link(Name,undefined) of
+	{ok,Pid} ->
+	  {{ok,Pid},[{Name,Pid}|TDB]};
+	Error ->
+	io:format("ERROR ~p:new_table ~p got ~p~n",
+		  [?MODULE,Name,Error]),
+	  {Error,TDB}
+      end
+
+  NewOut=case circdb_manager:create(DsId,Interval,Buckets) of
+	  {ok,Pid} ->
+	     [{H,Pid}|Out];
+	  {error,{already_started,Pid}} ->
+	     [{H,Pid}|Out];
+	  Error ->
+    io:format("init_tables ERROR ~p~n",[Error]),
+	     Out
+      end,
+    init_tables(Rest,DsId,NewOut).
+
+
+
 new_table(Name,Input,TDB) ->
   case proplists:get_value(Name,TDB) of
     undefined ->
@@ -360,7 +390,10 @@ info_table_all([{Name,Pid}|Rest],Out) ->
 %%% ----------------------------------------------------------------------------
 %% DB primitives
 init_tdb() ->
-    TS=circcdb_lib:get_cfg(circdb_timeseries,[]),
+    TS0=circdb_lib:get_cfg(circdb_timeseries,[]),
     Db=ets:new(tsdb,[]),
+    TS=init_tables(TS0,1,[]),
     ets:insert(Db,TS),
+    io:format("Db=~p~n TS=~p~n",[Db,TS]),
     Db.
+

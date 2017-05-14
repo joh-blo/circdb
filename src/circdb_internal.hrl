@@ -7,7 +7,8 @@
           consolidation, % [atom()]  :: [average,min,max,last]
           description,   % string()  :: Friendly description
 
-          time_series=[1,2,3,4] % [integer()] :: References to time series db
+          time_series=[1,2,3,4], % [integer()] :: References to time series db
+	  pid % Pid to handler process
          }).
 
 
