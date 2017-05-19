@@ -1,18 +1,7 @@
 -define(APP_NAME,circdb).
 
--record(cdb_ts,{
-	  id,            % integer() :: Key
-          interval,      % integer() :: Milli seconds between 2 buckets
-          buckets,       % integer() :: Number of time slots
-          consolidation, % [atom()]  :: [average,min,max,last]
-          description,   % string()  :: Friendly description
-
-          time_series=[1,2,3,4], % [integer()] :: References to time series db
-	  pid % Pid to handler process
-         }).
-
-
--record(db_table,{
+-record(cdb_table,{
+	  id,         % (int) Identity 
 	  size,       % (int) Size of database
 	  delta,      % (int) Time (ms) between updates
 	  trigger_fun,% (bool) Returns true if CurrPos in next table triggered

@@ -47,7 +47,7 @@ restore(Name,Input) ->
 %% @end
 %%--------------------------------------------------------------------
 start_link(Dir) ->
-  gen_server:start_link({local, ?SERVER}, ?MODULE, [], [Dir]).
+  gen_server:start_link({local, ?SERVER}, ?MODULE, [Dir], []).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -64,7 +64,7 @@ start_link(Dir) ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
-init(Dir) ->
+init([Dir]) ->
   Name=backup,
   {ok, #state{db=open_dets(Name,Dir)}}.
 
@@ -112,13 +112,13 @@ handle_call({restore,Name,Input}, _From, State=#state{db=Db}) ->
 prefetch({{node,Node},{M,F,A}}) ->
   case catch rpc:call(Node,M,F,A++[prefetch]) of
     {List,Size,Delta,FT,CurrPos} when is_list(List) ->
-      %% Should create a list with #db_table{} from data 
-      [#db_table{curr_pos=CurrPos,
-		 size=Size,
-		 delta=Delta,
-		 first_time=FT,
-		 db=list_to_tuple(List)
-		}];
+      %% Should create a list with #cdb_table{} from data 
+      [#cdb_table{curr_pos=CurrPos,
+		  size=Size,
+		  delta=Delta,
+		  first_time=FT,
+		  db=list_to_tuple(List)
+		 }];
     _ ->
       undefined
   end;
@@ -176,20 +176,21 @@ terminate(_Reason, _State) ->
 %% @end
 %%--------------------------------------------------------------------
 code_change(_OldVsn, State, _Extra) ->
-  {ok, State}.
+    {ok, State}.
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
 
 open_dets(Name,Dir) when is_atom(Name) ->
-  Opts=[ {access, read_write}
-       , {file, filename:join([Dir,"db",atom_to_list(Name)++".dets"])}
-       , {type, set}
-  ],
-  case dets:open_file(Name,Opts) of
-    {ok,Name} ->
-      Name;
-    Error ->
-      io:format("ERROR: Can't open database, got ~p~n",[Error])
-  end.
+    io:format("open_dets Name=~p Dir=~p~n",[Name,Dir]),
+    Opts=[ {access, read_write}
+	 , {file, filename:join([Dir,atom_to_list(Name)++".dets"])}
+	 , {type, set}
+	 ],
+    case dets:open_file(Name,Opts) of
+	{ok,Name} ->
+	    Name;
+	Error ->
+	    io:format("ERROR: Can't open database, got ~p~n",[Error])
+    end.

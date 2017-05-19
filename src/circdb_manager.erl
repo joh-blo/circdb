@@ -9,8 +9,10 @@
 -behaviour(gen_server).
 
 
--export([new/2,
-	 create/3,
+-export([create/2,
+	 
+%	 new/2,
+	 
 	 delete/3,
 	 update/2,update/3,
 	 updatev/1, dump/1, restore/1, last/1,
@@ -25,8 +27,12 @@
 	 init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
+-include("circdb_internal.hrl").
+
+
 -record(state,{
-	  tabledb % Table Db
+	  table_db,      % (ets) Table Db, with preconfigured RRD definitions
+	  measurement_db % (proplist) Mappings with measurement name and Pid
 	 }).
 
 
@@ -45,8 +51,8 @@ start_link() ->
 
 
 
-new(Name,Input) ->
-    gen_server:call(?MODULE,{new,Name,Input}).
+%new(Name,Input) ->
+%    gen_server:call(?MODULE,{new,Name,Input}).
 
 
 %% @spec create(erlang:iodata()) -> { ok, Response }  |  
@@ -55,8 +61,8 @@ new(Name,Input) ->
 %%  Response = iolist()
 %% @doc Create a new Round Robin Database (RRD). Check 
 %% [http://oss.oetiker.ch/rrdtool/doc/rrdcreate.en.html rrdcreate].
-create(Name,Step,Repeats) ->
-    gen_server:call(?MODULE,{create,Name,Step,Repeats}).
+create(TabIds,Name) ->
+    gen_server:call(?MODULE,{create,TabIds,Name}).
 
 %% @doc Delete an existing Round Robin Database (RRD).
 delete(Name,Step,Repeats) ->
@@ -78,7 +84,7 @@ update(Name,Time,V) ->
 
 
 %% @spec updatev(erlang:iodata()) -> { ok, Response }  |  
-%%   { error, Reason } 
+%%   { error, Reason } ssh
 %%  Reason = iolist()
 %%  Response = iolist()
 %% @doc Operationally equivalent to update except for output. Check 
@@ -197,7 +203,8 @@ xport(Args) ->
 %% @hidden
 init([]) -> 
     TDB=init_tdb(),
-    {ok, #state{tabledb=TDB}}.
+    {ok, #state{table_db=TDB,
+		measurement_db=[]}}.
 
 %% terminate
 %% @hidden
@@ -207,26 +214,30 @@ terminate(_Reason, _State) -> ok.
 %%
 %% handle_call
 %% @hidden
-handle_call({new,Name,Input}, _From,State=#state{tabledb=TDB}) ->
-    {Resp,NewTDB}=new_table(Name,Input,TDB),
-    {reply, Resp, State#state{tabledb=NewTDB}};
-handle_call({create,Name,Step,Repeats}, _From,State=#state{tabledb=TDB}) ->
-    {Resp,NewTDB}=alloc_table(Name,Step,Repeats,TDB),
-    {reply, Resp, State#state{tabledb=NewTDB}};
-handle_call({delete,Name,Step,Repeats}, _From,State=#state{tabledb=TDB}) ->
-    {Resp,NewTDB}=delete_table(Name,Step,Repeats,TDB),
-    {reply, Resp, State#state{tabledb=NewTDB}};
-handle_call({last,Name}, _From,State=#state{tabledb=TDB}) ->
-    Resp=lookup_table(Name,last,TDB),
+handle_call({create,TabIds,Name}, _From,State=#state{table_db=TDB,
+						     measurement_db=MDB}) ->
+    io:format("create Tables=~p~n",[tdb_to_list(TDB)]),
+    {Resp,NewMDB}=alloc_measurement(TabIds,Name,TDB,MDB),
+    {reply, Resp, State#state{measurement_db=NewMDB}};
+
+
+%% handle_call({new,Name,Input}, _From,State=#state{table_db=TDB}) ->
+%%     {Resp,NewTDB}=new_table(Name,Input,TDB),
+%%     {reply, Resp, State#state{table_db=NewTDB}};
+handle_call({delete,Name,Step,Repeats}, _From,State=#state{measurement_db=MDB}) ->
+    {Resp,NewMDB}=delete_table(Name,Step,Repeats,MDB),
+    {reply, Resp, State#state{measurement_db=NewMDB}};
+handle_call({last,Name}, _From,State=#state{measurement_db=MDB}) ->
+    Resp=lookup_table(Name,last,MDB),
     {reply, Resp, State};    
-handle_call({first,Name}, _From,State=#state{tabledb=TDB}) ->
-    Resp=lookup_table(Name,first,TDB),
+handle_call({first,Name}, _From,State=#state{measurement_db=MDB}) ->
+    Resp=lookup_table(Name,first,MDB),
     {reply, Resp, State};    
-handle_call({fetch,Name,FetchArgs}, _From,State=#state{tabledb=TDB}) ->
-    Resp=lookup_table(Name,FetchArgs,TDB),
+handle_call({fetch,Name,FetchArgs}, _From,State=#state{measurement_db=MDB}) ->
+    Resp=lookup_table(Name,FetchArgs,MDB),
     {reply, Resp, State};    
-handle_call({dump,Name}, _From,State=#state{tabledb=TDB}) ->
-    Resp=case dump_table(Name,TDB) of
+handle_call({dump,Name}, _From,State=#state{measurement_db=MDB}) ->
+    Resp=case dump_table(Name,MDB) of
 	     Str when is_list(Str) ->
 		 io:format("~s~n",[Str]),
 		 ok;
@@ -234,8 +245,8 @@ handle_call({dump,Name}, _From,State=#state{tabledb=TDB}) ->
 		 Err
 	 end,
     {reply, Resp, State};
-handle_call({info,Arg}, _From,State=#state{tabledb=TDB}) ->
-    Resp=case info_table(TDB,Arg) of
+handle_call({info,Arg}, _From,State=#state{measurement_db=MDB}) ->
+    Resp=case info_table(MDB,Arg) of
 	     Str when is_list(Str) ->
 		 io:format("~s~n",[Str]),
 		 ok;
@@ -247,8 +258,8 @@ handle_call({info,Arg}, _From,State=#state{tabledb=TDB}) ->
 
 %% handle_cast
 %% @hidden
-handle_cast({update,Name,Time,V}, State=#state{tabledb=TDB}) ->
-    update_table(Name,Time,V,TDB),
+handle_cast({update,Name,Time,V}, State=#state{measurement_db=MDB}) ->
+    update_table(Name,Time,V,MDB),
     {noreply, State};    
 handle_cast(Msg, State) -> 
     io:format("Got unexpected cast msg: ~p~n", [Msg]),
@@ -268,110 +279,106 @@ code_change(_OldVsn, State, _Extra) ->
 
 %%% ----------------------------------------------------------------------------
 
-init_tables([],DsId,Out) ->
-    lists:reverse(Out);
-init_tables([H=#cdb_ts{id=TsId,interval=Interval,buckets=Buckets}|Rest],
-	     DsId,Out) ->
-    io:format("init_tables ~p Interval=~p Buckets=~p~n",
-	      [{DsId,TsId},Interval,Buckets]),
 
-    case circdb_table:start_link(Name,undefined) of
+
+
+%% new_table(Name,Input,TDB) ->
+%%   case proplists:get_value(Name,TDB) of
+%%     undefined ->
+%%       case circdb_table:start_link(Name,Input) of
+%% 	{ok,Pid} ->
+%% 	  {{ok,Pid},[{Name,Pid}|TDB]};
+%% 	Error ->
+%% 	io:format("ERROR ~p:new_table ~p got ~p~n",
+%% 		  [?MODULE,Name,Error]),
+%% 	  {Error,TDB}
+%%       end
+%%   end.
+
+
+
+
+
+alloc_measurement(TabIds,Name,TDB,MDB) ->
+    Input=undefined,
+    case circdb_table:start_link(Name,Input) of
 	{ok,Pid} ->
-	  {{ok,Pid},[{Name,Pid}|TDB]};
+	    alloc_table2(TabIds,Pid,TDB),
+	    case proplists:get_value(Name,MDB) of
+		undefined ->
+		    {ok,[{Name,Pid}|MDB]};  
+		_ ->
+		    {ok,lists:keyreplace(Name,1,MDB,{Name,Pid})}
+	    end;
 	Error ->
-	io:format("ERROR ~p:new_table ~p got ~p~n",
-		  [?MODULE,Name,Error]),
-	  {Error,TDB}
-      end
-
-  NewOut=case circdb_manager:create(DsId,Interval,Buckets) of
-	  {ok,Pid} ->
-	     [{H,Pid}|Out];
-	  {error,{already_started,Pid}} ->
-	     [{H,Pid}|Out];
-	  Error ->
-    io:format("init_tables ERROR ~p~n",[Error]),
-	     Out
-      end,
-    init_tables(Rest,DsId,NewOut).
-
-
-
-new_table(Name,Input,TDB) ->
-  case proplists:get_value(Name,TDB) of
-    undefined ->
-      case circdb_table:start_link(Name,Input) of
-	{ok,Pid} ->
-	  {{ok,Pid},[{Name,Pid}|TDB]};
-	Error ->
-	io:format("ERROR ~p:new_table ~p got ~p~n",
-		  [?MODULE,Name,Error]),
-	  {Error,TDB}
-      end
-  end.
-
-
-alloc_table(Name,Step,Repeats,TDB) ->
-    case proplists:get_value(Name,TDB) of
-      undefined ->
-	io:format("ERROR ~p:alloc_table ~p table not initialised~n",
-		  [?MODULE,Name]),
-	{{error,table_not_initialized},TDB};
-      Pid ->
-	    circdb_table:add_table(Pid,Step,Repeats),
-	    {{ok,Pid},TDB}
+	    io:format("ERROR ~p:alloc_table ~p got ~p~n",
+		      [?MODULE,Name,Error]),
+	    {Error,MDB}
     end.
 
-delete_table(Name,Step,Repeats,TDB) ->
-    case proplists:get_value(Name,TDB) of
+alloc_table2([],_Pid,_TDB) ->
+    ok;
+alloc_table2([TabId|Rest],Pid,TDB) ->
+    case ets:lookup(TDB,TabId) of
+      [] ->
+	    io:format("ERROR ~p:alloc_table2 ~p unknown table id~n",
+		      [?MODULE,TabId]),
+	    {error,table_not_initialized};
+      [Tab] ->
+	    circdb_table:add_table(Pid,Tab),
+	    alloc_table2(Rest,Pid,TDB)
+    end.
+
+delete_table(Name,Step,Repeats,MDB) ->
+    case proplists:get_value(Name,MDB) of
 	undefined ->
-	    {{error,unknown_table},TDB};
+	    {{error,unknown_measurement},MDB};
 	Pid ->
 	    case circdb_table:rm_table(Pid,Step,Repeats) of
 		empty ->
-		    {ok,lists:keydelete(Name,1,TDB)};
+		    {ok,lists:keydelete(Name,1,MDB)};
 		_ ->
-		    {ok,TDB}
+		    {ok,MDB}
 	    end
     end.
 
-update_table(Name,Time,V,TDB) ->
-    case proplists:get_value(Name,TDB) of
+update_table(Name,Time,V,MDB) ->
+    case proplists:get_value(Name,MDB) of
 	undefined ->
-	io:format("ERROR Unknown table ~p~n",[Name]),
-	    {error,unknown_table};
+	io:format("ERROR Unknown measurement ~p~n",[Name]),
+	    {error,unknown_measurement};
 	Pid ->
 	    circdb_table:update(Pid,Time,V)
     end.
     
 
-lookup_table(Name,FetchArgs,TDB) ->
-    case proplists:get_value(Name,TDB) of
+lookup_table(Name,FetchArgs,MDB) ->
+    case proplists:get_value(Name,MDB) of
 	undefined ->
-	    {error,unknown_table};
+	    {error,unknown_measurement};
 	Pid ->
 	    circdb_table:fetch(Pid,FetchArgs)
     end.
  
 
 
-dump_table(Name,TDB) ->
-    case proplists:get_value(Name,TDB) of
+dump_table(Name,MDB) ->
+    case proplists:get_value(Name,MDB) of
 	undefined ->
-	    {error,unknown_table};
+	    {error,unknown_measurement};
 	Pid ->
 	    circdb_table:dump(Pid)
     end.
 
 
-info_table(TDB,all) ->
-    info_table_all(TDB,[]);
-info_table(TDB,TableName) ->
-  case proplists:get_value(TableName,TDB) of
+info_table(MDB,all) ->
+    info_table_all(MDB,[]);
+info_table(MDB,MeasurementId) ->
+  case proplists:get_value(MeasurementId,MDB) of
     Pid when is_pid(Pid) ->
       io_lib:format("Name=~p"
 		    " Info=~s~n",
-		    [TableName,lists:flatten(circdb_table:info(Pid))]);
+		    [MeasurementId,lists:flatten(circdb_table:info(Pid))]);
     Error ->
       io:format("ERROR ~p:info_table ~p~n",[?MODULE,Error]),
       {error,unknown_table}
@@ -390,10 +397,23 @@ info_table_all([{Name,Pid}|Rest],Out) ->
 %%% ----------------------------------------------------------------------------
 %% DB primitives
 init_tdb() ->
-    TS0=circdb_lib:get_cfg(circdb_timeseries,[]),
-    Db=ets:new(tsdb,[]),
-    TS=init_tables(TS0,1,[]),
+    TS0=circdb_lib:get_cfg(circdb_tables,[]),
+    Db=ets:new(tsdb,[{keypos,#cdb_table.id}]),
+    TS=init_tables(TS0,[]),
     ets:insert(Db,TS),
     io:format("Db=~p~n TS=~p~n",[Db,TS]),
     Db.
 
+
+init_tables([],Out) ->
+    lists:reverse(Out);
+init_tables([H=#cdb_table{id=TabId,delta=Interval,size=Buckets}|Rest],
+	    Out) ->
+    io:format("init_tables ~p Interval=~p Buckets=~p~n",
+	      [TabId,Interval,Buckets]),
+    init_tables(Rest,[H|Out]).
+
+
+
+tdb_to_list(TDB) ->
+    ets:tab2list(TDB).

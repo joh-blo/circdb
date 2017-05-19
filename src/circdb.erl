@@ -14,8 +14,8 @@
 %% --- Specific configuration records for circdb
 map_record(RecordType,Fields) ->
     case RecordType of
-	cdb_ts ->
-	    DecFields=record_info(fields,cdb_ts),
+	cdb_table ->
+	    DecFields=record_info(fields,cdb_table),
 	    Defaults=[],
 	    FieldList=emd_cfg:create_record_list(DecFields,Fields,Defaults,[]),
 	    list_to_tuple([RecordType|FieldList])
