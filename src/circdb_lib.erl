@@ -15,6 +15,6 @@ get_cfg(Cfg,Default) ->
 
 %%% Provides the current time in ms.
 current_time() ->
-    Now=erlang:timestamp(),
+    Now={_,_,MicroSec}=erlang:timestamp(),
     S=calendar:datetime_to_gregorian_seconds(calendar:now_to_local_time(Now)),
-    S*1000.
+    S*1000+(MicroSec div 1000).

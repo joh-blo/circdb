@@ -189,7 +189,7 @@ handle_cast(backup,State=#state{name=Name,db=Db,backup_interval=BT}) ->
   erlang:send_after(BT,self(),{?OTP_INTERNAL_GENCAST,backup}),
   {noreply, State};
 handle_cast({update,Time,Y},State=#state{db=Db,cons_type=CT}) ->
-    io:format("update with ~p Db=~p~n",[Y,Db]),
+    io:format("~p update with ~p Db=~p~n",[?MODULE,Y,Db]),
     NewDb=update_db(Db,Time,Y,CT,[]),
     {noreply, State#state{db=NewDb}};
 handle_cast(_Msg, State) ->
@@ -365,7 +365,8 @@ read_db(last,[#cdb_table{% first_time=FT,
 	true ->
 %	    Time=1, % calendar:now_to_datetime(erlang:timestamp()),
 	    %% Latest (most recently) stored data
-	    [{1,element(CurrPos,DbD)}]
+%	    [{1,element(CurrPos,DbD)}]
+	    element(CurrPos,DbD)
     end;
 read_db(first,Db) ->
     %% Oldest stored data
@@ -381,9 +382,11 @@ read_db(first,Db) ->
 		    %% We have not yet stored any value here, search "forward"
 		    %% by increasing CurrPos
 		    %% FIXME: Isn't this always the first value ?
-		   [{1,search_fwd(CurrPos+1,CurrPos,Size,DbD)}];
+%		    [{1,search_fwd(CurrPos+1,CurrPos,Size,DbD)}];
+		    search_fwd(CurrPos+1,CurrPos,Size,DbD);
 		V ->
-		   [{1,V}]
+%		    [{1,V}]
+		    V
 	    end
     end;
 read_db(all,[#cdb_table{first_time=FT,
@@ -411,7 +414,7 @@ read_db({StartT,StopT},Db) ->
     io:format("StartT=~p~n"
 	      "StopT =~p~n",[StartT,StopT]),
    fetch_range(DbT,StartT,StopT);
-read_db(DiffT,Db) ->
+read_db(DiffT,Db) when is_integer(DiffT) ->
     %% Return all data entries no older than DiffT,
     %% ie between (erlang:timestamp()-DiffT) - erlang:timestamp() where DiffT is in ms
     io:format("DiffT=~p~n",[DiffT]),
@@ -425,7 +428,9 @@ read_db(DiffT,Db) ->
     %% - Which position is StopT in the selected table
     io:format("StartT=~p~n"
 	      "StopT =~p~n",[StartT,StopT]),
-    fetch_range(DbT,StartT,StopT).
+    fetch_range(DbT,StartT,StopT);
+read_db(_DiffT,_Db) ->
+    {error,bad_cmd}.
 
 
 fetch_range(#cdb_table{curr_pos=0},_StartT,_StopT) ->
@@ -629,19 +634,19 @@ pp_dbt(#cdb_table{first_time=FT,
 update_db([],_Time,_Y,_CT,Out)  ->
     lists:reverse(Out);
 update_db([H=#cdb_table{curr_pos=CurrPos,
-		       trigger_fun=TriggFun,
-		       size=Size,
-		       db=Db} | Rest],
+			trigger_fun=TriggFun,
+			size=Size,
+			db=Db} | Rest],
 	  Time,Y,CT,Out)  ->
     NewPos=(((CurrPos-1+1) rem Size)+1),
     NewH=if
 	     NewPos==1 ->
 		 H#cdb_table{first_time=erlang:timestamp(),
-			    curr_pos=NewPos,
-			    db=setelement(NewPos,Db,Y)};
+			     curr_pos=NewPos,
+			     db=setelement(NewPos,Db,Y)};
 	     true ->
 		 H#cdb_table{curr_pos=NewPos,
-			    db=setelement(NewPos,Db,Y)}
+			     db=setelement(NewPos,Db,Y)}
 	 end,
     TriggerNext=if
 		    is_function(TriggFun) ->

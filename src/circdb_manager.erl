@@ -15,7 +15,8 @@
 	 
 	 delete/3,
 	 update/2,update/3,
-	 updatev/1, dump/1, restore/1, last/1,
+	 updatev/1, dump/1, restore/1,
+	 last/1,
          first/1,
 	 info/0, info/1,
 	 fetch/2, tune/1, resize/1, xport/1,
@@ -306,9 +307,9 @@ alloc_measurement(TabIds,Name,TDB,MDB) ->
 	    alloc_table2(TabIds,Pid,TDB),
 	    case proplists:get_value(Name,MDB) of
 		undefined ->
-		    {ok,[{Name,Pid}|MDB]};  
+		    {Pid,[{Name,Pid}|MDB]};  
 		_ ->
-		    {ok,lists:keyreplace(Name,1,MDB,{Name,Pid})}
+		    {Pid,lists:keyreplace(Name,1,MDB,{Name,Pid})}
 	    end;
 	Error ->
 	    io:format("ERROR ~p:alloc_table ~p got ~p~n",
@@ -345,9 +346,9 @@ delete_table(Name,Step,Repeats,MDB) ->
 update_table(Name,Time,V,MDB) ->
     case proplists:get_value(Name,MDB) of
 	undefined ->
-	io:format("ERROR Unknown measurement ~p~n",[Name]),
+	    io:format("ERROR Unknown measurement ~p~n MDB=~p~n",[Name,MDB]),
 	    {error,unknown_measurement};
-	Pid ->
+	Pid when is_pid(Pid) ->
 	    circdb_table:update(Pid,Time,V)
     end.
     
@@ -356,7 +357,7 @@ lookup_table(Name,FetchArgs,MDB) ->
     case proplists:get_value(Name,MDB) of
 	undefined ->
 	    {error,unknown_measurement};
-	Pid ->
+	Pid when is_pid(Pid) ->
 	    circdb_table:fetch(Pid,FetchArgs)
     end.
  
@@ -366,7 +367,7 @@ dump_table(Name,MDB) ->
     case proplists:get_value(Name,MDB) of
 	undefined ->
 	    {error,unknown_measurement};
-	Pid ->
+	Pid when is_pid(Pid) ->
 	    circdb_table:dump(Pid)
     end.
 
