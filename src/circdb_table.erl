@@ -189,7 +189,7 @@ handle_cast(backup,State=#state{name=Name,db=Db,backup_interval=BT}) ->
   erlang:send_after(BT,self(),{?OTP_INTERNAL_GENCAST,backup}),
   {noreply, State};
 handle_cast({update,Time,Y},State=#state{db=Db,cons_type=CT}) ->
-    io:format("~p update with ~p Db=~p~n",[?MODULE,Y,Db]),
+%    io:format("~p update with ~p Db=~p~n",[?MODULE,Y,Db]),
     NewDb=update_db(Db,Time,Y,CT,[]),
     {noreply, State#state{db=NewDb}};
 handle_cast(_Msg, State) ->
